@@ -1,0 +1,4 @@
+environs==9.5.0
+flask==2.2.5
+marshmallow==3.20.1
+Requests==2.31.0
