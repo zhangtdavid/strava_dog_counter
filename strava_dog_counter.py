@@ -6,6 +6,7 @@ import webbrowser
 
 from environs import Env
 from flask import Flask, request
+import pandas as pd
 import requests
 
 # === CONFIGURATION ===
@@ -26,6 +27,7 @@ ACTIVITY_BY_ID_URL = "https://www.strava.com/api/v3/activities/"
 CACHE_DIR = "cache"
 TOKEN_FILE = "strava_token.json"
 ACTIVITIES_FILE = "strava_activities.json"
+ACTIVITIES_CSV_FILE = "strava_activities.csv"
 
 # === FLASK APP SETUP ===
 
@@ -80,12 +82,18 @@ def print_activities(activities_json):
             dogs_in_activity = int(dog_counter_match.group(1)) if dog_counter_match else 0
         except (IndexError, ValueError):
             dogs_in_activity = 0
+        act["dogs_counted"] = dogs_in_activity
         dog_counter += dogs_in_activity
         print(
-            f"Activity: {act['name']}, ID: {act['id']}, Date: {act['start_date']}, Dogs: {dogs_in_activity}, Description: {act['description']}"
+            f"Activity: {act['name']}, ID: {act['id']}, Date: {act['start_date_local']}, Dogs: {dogs_in_activity}, Description: {act['description']}"
         )
     print(f"Total dog counter across all activities: {dog_counter}")
     print("== End Strava Activities ==")
+
+    os.makedirs(CACHE_DIR, exist_ok=True)
+    activities_csv_path= os.path.join(CACHE_DIR, ACTIVITIES_CSV_FILE)
+    with open(activities_csv_path, "w", encoding="utf-8") as f:
+        pd.DataFrame(activities_json).replace({r'\n': r'\\n'}, regex=True).to_csv(f, index=False)
 
 
 def read_activities():
@@ -129,14 +137,22 @@ def fetch_activities():
             break
 
         for act in activities_json:
-            all_activities.append(act)
             activity_response: dict = requests.get(
                 f"{ACTIVITY_BY_ID_URL}/{act['id']}", headers=headers, timeout=10
             )
-            act["description"] = activity_response.json().get("description", "")
+            activity_json = activity_response.json()
+            summarized_act = {}
+            summarized_act["id"] = activity_json.get("id", "")
+            summarized_act["name"] = activity_json.get("name", "")
+            summarized_act["start_date_local"] = activity_json.get("start_date_local", "")
+            summarized_act["distance"] = activity_json.get("distance", "")
+            summarized_act["sport_type"] = activity_json.get("sport_type", "")
+            summarized_act["description"] = activity_json.get("description", "")
+            summarized_act["start_latlng"] = activity_json.get("start_latlng", "")
             print(
-                f"Fetched activity {len(all_activities)} description: {act['name']} on {act['start_date']} with description: {act["description"]}"
+                f"Fetched activity {len(all_activities) + 1} description: {summarized_act['name']} on {summarized_act['start_date_local']} with description: {summarized_act["description"]}"
             )
+            all_activities.append(summarized_act)
 
     print(f"Fetched {len(all_activities)} activities.")
     return all_activities

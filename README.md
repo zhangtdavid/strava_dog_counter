@@ -47,3 +47,8 @@ deactivate
 - sport_type
 - description
 - start_latlng
+
+Always fetch to see if newer ones have been found (cache the last-run-time, and check by that time minus 1 day)
+Filter by sport type
+Keep track of activities that have been fetched
+Keep track of activities that have been processed (description fetched)
