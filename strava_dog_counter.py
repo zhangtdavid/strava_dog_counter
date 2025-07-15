@@ -132,6 +132,8 @@ def fetch_activities():
 
     all_activities = cached_activities if cached_activities else []
 
+    only_sport_types = env.list("ONLY_SPORT_TYPES", default=[])
+
     while True:
         params["page"] += 1
         try:
@@ -151,6 +153,10 @@ def fetch_activities():
             break
 
         for act in activities_json:
+            if only_sport_types:
+                if act["sport_type"] not in only_sport_types:
+                    continue
+
             activity_response: dict = requests.get(
                 f"{ACTIVITY_BY_ID_URL}/{act['id']}", headers=headers, timeout=30
             )
