@@ -211,3 +211,4 @@ __marimo__/
 
 # App-specific
 cache/
+strava_activities.csv

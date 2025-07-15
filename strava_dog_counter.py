@@ -77,6 +77,7 @@ def print_activities(activities_json):
     dog_counter = 0
 
     for act in activities_json:
+        act.pop("start_date", None)
         dog_counter_match = re.search(r"(\d+)\s*dog", act["description"], re.IGNORECASE)
         try:
             dogs_in_activity = int(dog_counter_match.group(1)) if dog_counter_match else 0
@@ -90,9 +91,7 @@ def print_activities(activities_json):
     print(f"Total dog counter across all activities: {dog_counter}")
     print("== End Strava Activities ==")
 
-    os.makedirs(CACHE_DIR, exist_ok=True)
-    activities_csv_path= os.path.join(CACHE_DIR, ACTIVITIES_CSV_FILE)
-    with open(activities_csv_path, "w", encoding="utf-8") as f:
+    with open(ACTIVITIES_CSV_FILE, "w", encoding="utf-8") as f:
         pd.DataFrame(activities_json).replace({r'\n': r'\\n'}, regex=True).to_csv(f, index=False)
 
 
@@ -112,24 +111,39 @@ def save_activities(activities_json):
 
 
 def fetch_activities():
-    print("\n== Fetching Strava Activities ==")
+    print("== Fetching Strava Activities ==")
+
+    cached_activities = read_activities()
+    latest_start_date = datetime.strptime(START_DATE if START_DATE else "2000-01-01", "%Y-%m-%d").timestamp()
+    if cached_activities:
+        for act in cached_activities:
+            start_date = act.get("start_date", "")
+            if start_date:
+                try:
+                    # + 1 so that we only fetch activities after the latest one
+                    start_timestamp = datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%SZ").timestamp() + 1
+                    latest_start_date = max(latest_start_date, start_timestamp)
+                except ValueError:
+                    print(f"Invalid date format for activity {act['id']}: {start_date}")
 
     headers: dict = {"Authorization": f"Bearer {access_token}"}
-    params: dict = {"per_page": 200, "page": 0}
+    params: dict = {"per_page": 200, "page": 0, "after": int(latest_start_date)}
+    print(f"Fetching activities after {datetime.fromtimestamp(latest_start_date).strftime('%Y-%m-%d %H:%M:%S')}")
 
-    if START_DATE:
-        params["after"] = int(datetime.strptime(START_DATE, "%Y-%m-%d").timestamp())\
-        
-    all_activities = []
+    all_activities = cached_activities if cached_activities else []
 
     while True:
         params["page"] += 1
-        activities_response: dict = requests.get(
-            ACTIVITIES_URL, headers=headers, params=params, timeout=10
-        )
+        try:
+            activities_response: dict = requests.get(
+                ACTIVITIES_URL, headers=headers, params=params, timeout=30
+            )
+        except requests.RequestException as e:
+            print(f"Failed to fetch activities, try running again later.\nError message: {e}")
+            break
 
         if activities_response.status_code != 200:
-            print(f"Failed to fetch activities: {activities_response.text}")
+            print(f"Failed to fetch activities, try running again later.\nError message: {activities_response.text}")
             break
 
         activities_json = activities_response.json()
@@ -138,23 +152,24 @@ def fetch_activities():
 
         for act in activities_json:
             activity_response: dict = requests.get(
-                f"{ACTIVITY_BY_ID_URL}/{act['id']}", headers=headers, timeout=10
+                f"{ACTIVITY_BY_ID_URL}/{act['id']}", headers=headers, timeout=30
             )
             activity_json = activity_response.json()
             summarized_act = {}
             summarized_act["id"] = activity_json.get("id", "")
             summarized_act["name"] = activity_json.get("name", "")
             summarized_act["start_date_local"] = activity_json.get("start_date_local", "")
+            summarized_act["start_date"] = activity_json.get("start_date", "")
             summarized_act["distance"] = activity_json.get("distance", "")
             summarized_act["sport_type"] = activity_json.get("sport_type", "")
-            summarized_act["description"] = activity_json.get("description", "")
             summarized_act["start_latlng"] = activity_json.get("start_latlng", "")
+            summarized_act["description"] = activity_json.get("description", "")
             print(
                 f"Fetched activity {len(all_activities) + 1} description: {summarized_act['name']} on {summarized_act['start_date_local']} with description: {summarized_act["description"]}"
             )
             all_activities.append(summarized_act)
 
-    print(f"Fetched {len(all_activities)} activities.")
+        print(f"Total activities: {len(all_activities)}")
     return all_activities
 
 
@@ -177,7 +192,7 @@ def callback():
             "code": code,
             "grant_type": "authorization_code",
         },
-        timeout=10,
+        timeout=30,
     )
 
     if token_response.status_code != 200:
@@ -204,28 +219,21 @@ def start_auth_flow():
 # === MAIN ENTRY POINT ===
 
 if __name__ == "__main__":
-    cached_activities = read_activities()
-    if cached_activities:
-        print("Using cached activities.")
-        print_activities(cached_activities)
-    else:
-        access_token = load_token()
-        if access_token:
-            print("Using saved access token.")
+    access_token = load_token()
+    if access_token:
+        print("Using saved access token.")
 
-            response: dict = requests.get(
-                ACTIVITIES_URL,
-                headers={"Authorization": f"Bearer {access_token}"},
-                timeout=10,
-            )
-            if response.status_code == 200:
-                activities = fetch_activities()
-                save_activities(activities)
-                print_activities(activities)
-            else:
-                print(
-                    f"Failed to fetch activities with saved token, requesting new token..."
-                )
-                start_auth_flow()
+        response: dict = requests.get(
+            ACTIVITIES_URL,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=30,
+        )
+        if response.status_code == 200:
+            activities = fetch_activities()
+            save_activities(activities)
+            print_activities(activities)
         else:
+            print("Failed to fetch activities with saved token, requesting new token...")
             start_auth_flow()
+    else:
+        start_auth_flow()
