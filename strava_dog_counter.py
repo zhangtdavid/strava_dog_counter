@@ -166,7 +166,7 @@ def fetch_activities():
                 break
 
             activity_json = activity_response.json()
-            if not activity_json["id"] or not activity_json["start_date_local"]:
+            if not activity_json or not activity_json.get("id", "") or not activity_json.get("start_date_local", ""):
                 break
 
             summarized_act = {}
