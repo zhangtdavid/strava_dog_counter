@@ -208,6 +208,8 @@ def fetch_activities(strava_access_token):
                 break
 
             activity_json = activity_response.json()
+
+            # This handles cases where the rate limit has been hit
             if (
                 not activity_json
                 or not activity_json.get("id", "")
@@ -362,6 +364,7 @@ if __name__ == "__main__":
         activities = fetch_activities(cached_access_token)
         save_activities(activities)
         process_activities(activities)
+        print(f"Activities saved to {ACTIVITIES_CSV_FILE}")
     else:
         print("Failed to obtain access token. Please try again.")
         sys.exit(1)
