@@ -1,3 +1,9 @@
+"""
+If you write # dog in your Strava descriptions, this is the app for you 🐶
+It fetches all activities, looks for that line, and adds them all up for you.
+Bonus CSV output included!
+"""
+
 from datetime import datetime
 import json
 import os
@@ -17,7 +23,7 @@ CLIENT_ID = os.environ.get("CLIENT_ID")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET")
 START_DATE = os.environ.get("START_DATE")
 
-REDIRECT_URI = "http://localhost:5000/callback"
+REDIRECT_URI = "http://localhost:3001/callback"
 
 AUTH_URL = "https://www.strava.com/oauth/authorize"
 TOKEN_URL = "https://www.strava.com/oauth/token"
@@ -32,11 +38,11 @@ ACTIVITIES_CSV_FILE = "strava_activities.csv"
 # === FLASK APP SETUP ===
 
 app = Flask(__name__)
-access_token = None
 
 
 @app.route("/")
 def authorize():
+    """Prompts user to authorize this app via Strava authorization page."""
     url = (
         f"{AUTH_URL}?"
         f"client_id={CLIENT_ID}&response_type=code&redirect_uri={REDIRECT_URI}"
@@ -49,6 +55,7 @@ def authorize():
 
 
 def load_token():
+    """Load the access token from the cache if it exists."""
     token_path = os.path.join(CACHE_DIR, TOKEN_FILE)
     if os.path.exists(token_path):
         with open(token_path, "r", encoding="utf-8") as f:
@@ -58,6 +65,7 @@ def load_token():
 
 
 def save_token(token):
+    """Save the access token to the cache."""
     os.makedirs(CACHE_DIR, exist_ok=True)
     token_path = os.path.join(CACHE_DIR, TOKEN_FILE)
     with open(token_path, "w", encoding="utf-8") as f:
@@ -67,7 +75,11 @@ def save_token(token):
 # === Handling Activities data ===
 
 
-def print_activities(activities_json):
+def process_activities(activities_json):
+    """
+    Counts the number of dogs mentioned in activity descriptions and
+    exports the data to a CSV file.
+    """
     if not activities_json:
         print("No activities found.")
         return
@@ -86,16 +98,20 @@ def print_activities(activities_json):
         act["dogs_counted"] = dogs_in_activity
         dog_counter += dogs_in_activity
         print(
-            f"Activity: {act['name']}, ID: {act['id']}, Date: {act['start_date_local']}, Dogs: {dogs_in_activity}, Description: {act['description']}"
+            f"Activity: {act['name']}, ID: {act['id']}, Date: {act['start_date_local']}, "
+            f"Dogs: {dogs_in_activity}, Description: {act['description']}"
         )
     print(f"Total dog counter across all activities: {dog_counter}")
     print("== End Strava Activities ==")
 
     with open(ACTIVITIES_CSV_FILE, "w", encoding="utf-8") as f:
-        pd.DataFrame(activities_json).replace({r'\n': r'\\n'}, regex=True).to_csv(f, index=False)
+        pd.DataFrame(activities_json).replace({r"\n": r"\\n"}, regex=True).to_csv(
+            f, index=False
+        )
 
 
 def read_activities():
+    """Reads activities stored in the cache."""
     activities_path = os.path.join(CACHE_DIR, ACTIVITIES_FILE)
     if os.path.exists(activities_path):
         with open(activities_path, "r", encoding="utf-8") as f:
@@ -104,48 +120,78 @@ def read_activities():
 
 
 def save_activities(activities_json):
+    """Saves activities to the cache."""
     os.makedirs(CACHE_DIR, exist_ok=True)
     activities_path = os.path.join(CACHE_DIR, ACTIVITIES_FILE)
     with open(activities_path, "w", encoding="utf-8") as f:
         json.dump(activities_json, f)
 
 
-def fetch_activities():
-    print("== Fetching Strava Activities ==")
-
+def latest_start_timestamp_from_activities(cached_activities):
+    """Finds the latest start timestamp from cached activities."""
     cached_activities = read_activities()
-    latest_start_date = datetime.strptime(START_DATE if START_DATE else "2000-01-01", "%Y-%m-%d").timestamp()
+    latest_start_timestamp = datetime.strptime(
+        START_DATE if START_DATE else "2000-01-01", "%Y-%m-%d"
+    ).timestamp()
+
     if cached_activities:
-        for act in cached_activities:
+        for act in reversed(cached_activities):
             start_date = act.get("start_date", "")
             if start_date:
                 try:
-                    # + 1 so that we only fetch activities after the latest one
-                    start_timestamp = datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%SZ").timestamp() + 1
-                    latest_start_date = max(latest_start_date, start_timestamp)
+                    # Assumes the last-most activity is the most recent one.
+                    # + 1 so that we only fetch activities after the latest one.
+                    start_timestamp = (
+                        datetime.strptime(start_date, "%Y-%m-%dT%H:%M:%SZ").timestamp()
+                        + 1
+                    )
+                    if start_timestamp > latest_start_timestamp:
+                        latest_start_timestamp = start_timestamp
+                        break
                 except ValueError:
                     print(f"Invalid date format for activity {act['id']}: {start_date}")
 
-    headers: dict = {"Authorization": f"Bearer {access_token}"}
-    params: dict = {"per_page": 200, "page": 0, "after": int(latest_start_date)}
-    print(f"Fetching activities after {datetime.fromtimestamp(latest_start_date).strftime('%Y-%m-%d %H:%M:%S')}")
+    return latest_start_timestamp
+
+
+def fetch_activities(strava_access_token):
+    """Fetches as many activities from Strava API as it can and stores them as JSON in the cache."""
+    print("== Fetching Strava Activities ==")
+
+    cached_activities = read_activities()
+    latest_start_timestamp = latest_start_timestamp_from_activities(cached_activities)
+
+    headers: dict = {"Authorization": f"Bearer {strava_access_token}"}
+    params: dict = {"per_page": 200, "page": 0, "after": int(latest_start_timestamp)}
+    print(
+        "Fetching activities after "
+        f"{datetime.fromtimestamp(latest_start_timestamp).strftime('%Y-%m-%d %H:%M:%S')}"
+    )
 
     all_activities = cached_activities if cached_activities else []
-
     only_sport_types = env.list("ONLY_SPORT_TYPES", default=[])
 
     while True:
         params["page"] += 1
         try:
             activities_response: dict = requests.get(
-                ACTIVITIES_URL, headers=headers, params=params, timeout=30
+                ACTIVITIES_URL,
+                headers=headers,
+                params=params,
+                timeout=30,
             )
         except requests.RequestException as e:
-            print(f"Failed to fetch activities, try running again later.\nError message: {e}")
+            print(
+                "Failed to fetch activities, try running again later.\n"
+                f"Error message: {e}"
+            )
             break
 
         if activities_response.status_code != 200:
-            print(f"Failed to fetch activities through unexpected status code, try running again later.\nError message: {activities_response.text}")
+            print(
+                "Failed to fetch activities due to unexpected status code, "
+                f"try running again later.\nError message: {activities_response.text}"
+            )
             break
 
         activities_json = activities_response.json()
@@ -162,25 +208,32 @@ def fetch_activities():
                     f"{ACTIVITY_BY_ID_URL}/{act['id']}", headers=headers, timeout=30
                 )
             except requests.RequestException as e:
-                print(f"Failed to fetch activity {act["id"]}, try running again later.\nError message: {e}")
+                print(
+                    f"Failed to fetch activity {act["id"]}, "
+                    f"try running again later.\nError message: {e}")
                 break
 
             activity_json = activity_response.json()
-            if not activity_json or not activity_json.get("id", "") or not activity_json.get("start_date_local", ""):
+            if not activity_json or not activity_json.get("id", "") or \
+               not activity_json.get("start_date_local", ""):
                 break
 
             summarized_act = {}
             summarized_act["id"] = activity_json.get("id", "")
 
             summarized_act["name"] = activity_json.get("name", "")
-            summarized_act["start_date_local"] = activity_json.get("start_date_local", "")
+            summarized_act["start_date_local"] = activity_json.get(
+                "start_date_local", ""
+            )
             summarized_act["start_date"] = activity_json.get("start_date", "")
             summarized_act["distance"] = activity_json.get("distance", "")
             summarized_act["sport_type"] = activity_json.get("sport_type", "")
             summarized_act["start_latlng"] = activity_json.get("start_latlng", "")
             summarized_act["description"] = activity_json.get("description", "")
             print(
-                f"Fetched activity {len(all_activities) + 1} description: {summarized_act['name']} on {summarized_act['start_date_local']} with description: {summarized_act["description"]}"
+                f"Fetched activity {len(all_activities) + 1} description: {summarized_act['name']} "
+                f"on {summarized_act['start_date_local']} with description: "
+                f"{summarized_act["description"]}"
             )
             all_activities.append(summarized_act)
 
@@ -193,7 +246,7 @@ def fetch_activities():
 
 @app.route("/callback")
 def callback():
-    global access_token
+    """Handles the callback from Strava after user authorization."""
     code = request.args.get("code")
     if not code:
         return "Authorization failed or denied."
@@ -218,37 +271,43 @@ def callback():
 
     if access_token:
         save_token(access_token)
-        activities_json = fetch_activities()
+        activities_json = fetch_activities(access_token)
         save_activities(activities_json)
-        print_activities(activities_json)
-        return "Authorization complete! You can close this window. Listing activities in your terminal..."
-    else:
-        return "Authorization failed. Please try again."
+        process_activities(activities_json)
+        return (
+            "Authorization complete! You can close this window. "
+            "Listing activities in your terminal..."
+        )
+
+    return "Authorization failed. Please try again."
 
 
 def start_auth_flow():
-    webbrowser.open("http://localhost:5000/")
-    app.run(port=5000)
+    """Starts the authorization flow by opening to the Strava authorization page."""
+    webbrowser.open("http://localhost:3001/")
+    app.run(port=3001)
 
 
 # === MAIN ENTRY POINT ===
 
 if __name__ == "__main__":
-    access_token = load_token()
-    if access_token:
+    cached_access_token = load_token()
+    if cached_access_token:
         print("Using saved access token.")
 
         response: dict = requests.get(
             ACTIVITIES_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
+            headers={"Authorization": f"Bearer {cached_access_token}"},
             timeout=30,
         )
         if response.status_code == 200:
-            activities = fetch_activities()
+            activities = fetch_activities(cached_access_token)
             save_activities(activities)
-            print_activities(activities)
+            process_activities(activities)
         else:
-            print("Failed to fetch activities with saved token, requesting new token...")
+            print(
+                "Failed to fetch activities with saved token, requesting new token..."
+            )
             start_auth_flow()
     else:
         start_auth_flow()
