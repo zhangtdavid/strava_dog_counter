@@ -5,7 +5,6 @@ It fetches all activities, matches , and adds them all up for you.
 Bonus CSV output included!
 """
 
-from datetime import datetime
 import json
 import multiprocessing
 import os
@@ -13,11 +12,12 @@ import re
 import sys
 import time
 import webbrowser
+from datetime import datetime
 
-from environs import Env
-from flask import Flask, request
 import pandas as pd
 import requests
+from environs import Env
+from flask import Flask, request
 
 # === CONFIGURATION ===
 
@@ -202,7 +202,7 @@ def fetch_activities(strava_access_token):
                 )
             except requests.RequestException as e:
                 print(
-                    f"Failed to fetch activity {act['id']}, "
+                    f"Failed to fetch activity {act["id"]}, "
                     f"try running again later.\nError message: {e}"
                 )
                 break
@@ -341,13 +341,14 @@ if __name__ == "__main__":
         print("Using saved access token.")
 
         try:
-            response = requests.get(
+            response: dict = requests.get(
                 ACTIVITIES_URL,
                 headers={"Authorization": f"Bearer {cached_access_token}"},
                 timeout=30,
             )
         except requests.RequestException as e:
             print(f"Failed to test saved token: {e}")
+            response = None
 
         if not response or response.status_code != 200:
             print(

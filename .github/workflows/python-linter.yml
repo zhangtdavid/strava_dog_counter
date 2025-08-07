@@ -28,23 +28,24 @@ jobs:
     - name: Run Ruff linter
       run: |
         echo "Running Ruff linter..."
-        ruff check . || echo "Ruff found issues"
+        ruff check .
     
     - name: Check code formatting with Black
       run: |
         echo "Checking code formatting..."
-        black --check --diff . || echo "Black formatting issues found"
+        black --check --diff .
     
     - name: Check import sorting with isort
       run: |
         echo "Checking import sorting..."
-        isort --check-only --diff . || echo "Import sorting issues found"
+        isort --check-only --diff .
     
     - name: Lint with flake8
       run: |
         echo "Running flake8..."
-        flake8 . --max-line-length=88 --extend-ignore=E203,W503 || echo "Flake8 found issues"
+        flake8 . --max-line-length=100
     
     - name: Show summary
+      if: success()
       run: |
-        echo "Linting complete! Check the output above for any issues."
+        echo "✅ All linting checks passed successfully!"
