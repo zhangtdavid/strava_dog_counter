@@ -276,8 +276,8 @@ def run_auth_server():
                 },
                 timeout=30,
             )
-        except requests.RequestException as e:
-            return f"Token exchange request failed: {e}"
+        except requests.RequestException:
+            return "Token exchange request failed"
 
         if token_response.status_code != 200:
             return f"Token exchange failed: {token_response.text}"
