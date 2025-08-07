@@ -78,10 +78,10 @@ def print_activities(activities_json):
 
     for act in activities_json:
         act.pop("start_date", None)
-        dog_counter_match = re.search(r"(\d+)\s*dog", act["description"], re.IGNORECASE)
         try:
+            dog_counter_match = re.search(r"(\d+)\s*dog", act["description"], re.IGNORECASE)
             dogs_in_activity = int(dog_counter_match.group(1)) if dog_counter_match else 0
-        except (IndexError, ValueError):
+        except (IndexError, ValueError, TypeError):
             dogs_in_activity = 0
         act["dogs_counted"] = dogs_in_activity
         dog_counter += dogs_in_activity
@@ -145,7 +145,7 @@ def fetch_activities():
             break
 
         if activities_response.status_code != 200:
-            print(f"Failed to fetch activities, try running again later.\nError message: {activities_response.text}")
+            print(f"Failed to fetch activities through unexpected status code, try running again later.\nError message: {activities_response.text}")
             break
 
         activities_json = activities_response.json()
@@ -157,12 +157,21 @@ def fetch_activities():
                 if act["sport_type"] not in only_sport_types:
                     continue
 
-            activity_response: dict = requests.get(
-                f"{ACTIVITY_BY_ID_URL}/{act['id']}", headers=headers, timeout=30
-            )
+            try:
+                activity_response: dict = requests.get(
+                    f"{ACTIVITY_BY_ID_URL}/{act['id']}", headers=headers, timeout=30
+                )
+            except requests.RequestException as e:
+                print(f"Failed to fetch activity {act["id"]}, try running again later.\nError message: {e}")
+                break
+
             activity_json = activity_response.json()
+            if not activity_json or not activity_json.get("id", "") or not activity_json.get("start_date_local", ""):
+                break
+
             summarized_act = {}
             summarized_act["id"] = activity_json.get("id", "")
+
             summarized_act["name"] = activity_json.get("name", "")
             summarized_act["start_date_local"] = activity_json.get("start_date_local", "")
             summarized_act["start_date"] = activity_json.get("start_date", "")
