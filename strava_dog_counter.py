@@ -5,7 +5,6 @@ It fetches all activities, matches , and adds them all up for you.
 Bonus CSV output included!
 """
 
-from datetime import datetime
 import json
 import multiprocessing
 import os
@@ -13,11 +12,12 @@ import re
 import sys
 import time
 import webbrowser
+from datetime import datetime
 
-from environs import Env
-from flask import Flask, request
 import pandas as pd
 import requests
+from environs import Env
+from flask import Flask, request
 
 # === CONFIGURATION ===
 
@@ -232,7 +232,7 @@ def fetch_activities(strava_access_token):
             print(
                 f"Fetched activity {len(all_activities) + 1} description: {summarized_act['name']} "
                 f"on {summarized_act['start_date_local']} with description: "
-                f"{summarized_act["description"]}"
+                f"{summarized_act.get("description")}"
             )
             all_activities.append(summarized_act)
 
