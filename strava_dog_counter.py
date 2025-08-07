@@ -202,7 +202,7 @@ def fetch_activities(strava_access_token):
                 )
             except requests.RequestException as e:
                 print(
-                    f"Failed to fetch activity {act["id"]}, "
+                    f"Failed to fetch activity {act['id']}, "
                     f"try running again later.\nError message: {e}"
                 )
                 break
