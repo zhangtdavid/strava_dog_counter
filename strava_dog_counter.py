@@ -341,14 +341,13 @@ if __name__ == "__main__":
         print("Using saved access token.")
 
         try:
-            response: dict = requests.get(
+            response = requests.get(
                 ACTIVITIES_URL,
                 headers={"Authorization": f"Bearer {cached_access_token}"},
                 timeout=30,
             )
         except requests.RequestException as e:
             print(f"Failed to test saved token: {e}")
-            response = None
 
         if not response or response.status_code != 200:
             print(
