@@ -232,7 +232,7 @@ def fetch_activities(strava_access_token):
             print(
                 f"Fetched activity {len(all_activities) + 1} description: {summarized_act['name']} "
                 f"on {summarized_act['start_date_local']} with description: "
-                f"{summarized_act["description"]}"
+                f"{summarized_act.get("description")}"
             )
             all_activities.append(summarized_act)
 
