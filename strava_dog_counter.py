@@ -61,6 +61,12 @@ def save_token(token):
         json.dump({"access_token": token}, f)
 
 
+def clear_token():
+    """Clears the token in the cache."""
+    token_path = os.path.join(CACHE_DIR, TOKEN_FILE)
+    os.remove(token_path)
+
+
 # === Handling Activities data ===
 
 
@@ -354,6 +360,7 @@ if __name__ == "__main__":
             print(
                 "Failed to fetch activities with saved token, requesting new token..."
             )
+            clear_token()
             start_auth_flow()
             cached_access_token = load_token()
     else:
