@@ -1,6 +1,10 @@
 name: Python Linter
 description: "Runs Python linters on code changes to ensure code quality."
 
+permissions:
+  contents: read
+  pull-requests: write
+
 on:
   push:
     branches: [ "main" ]
