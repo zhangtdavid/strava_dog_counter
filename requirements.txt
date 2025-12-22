@@ -1,5 +1,5 @@
 environs==9.5.0
 flask==2.2.5
-marshmallow==3.20.1
+marshmallow==3.26.2
 Requests==2.32.4
 pandas==2.3.1
